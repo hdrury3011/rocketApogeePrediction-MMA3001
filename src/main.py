@@ -397,8 +397,8 @@ def make_sensitivity_figure(plt, figdir, rows):
 # ---------------------------------------------------------------------------
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    parser.add_argument('--data', default='data/project_data_set.csv',
-                        help='CFD csv file (default: data/project_data_set.csv)')
+    parser.add_argument('--data', default='data/Project Data Set.csv',
+                        help='CFD csv file (default: data/Project Data Set.csv)')
     parser.add_argument('--outdir', default='docs', help='output folder')
     parser.add_argument('--no-plots', action='store_true', help='skip figures')
     args = parser.parse_args(argv)
