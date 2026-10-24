@@ -11,6 +11,8 @@ Steps
 3. Calibration of the unknown rocket mass to the 3450 m no-airbrake apogee.
 4. Validation against the 11000 ft airbrake apogee and flap/deployment study.
 5. Sensitivity, modelling-assumption and performance studies.
+6. Angle-of-attack sensitivity: apogee, calibrated mass and airbrake
+   authority at the pitch angles whose CFD table is complete.
 
 Figures are saved to <outdir>/figures and a results summary to
 <outdir>/results.md.
@@ -32,7 +34,8 @@ from calibration import bisect, calibrate_mass, flap_for_apogee
 from coast import reference_apogee, simulate_apogee, trajectory
 from config import (APOGEE_NO_BRAKES, APOGEE_WITH_BRAKES, G, H_BURNOUT,
                     S_REF, V_BURNOUT)
-from drag import DragModel, load_cd_table
+from drag import (DragModel, cd_roll_spread, cd_vs_pitch,
+                  complete_pitches, load_cd_table)
 from integrators import euler_step, rk4_step
 
 # Palette validated with the dataviz skill's validate_palette.js (light mode).
@@ -394,6 +397,85 @@ def make_sensitivity_figure(plt, figdir, rows):
     plt.close(fig)
 
 
+def run_pitch_study(data_path, mass0):
+    """Effect of a constant angle of attack on apogee, mass and airbrake authority.
+
+    Uses every pitch angle whose (Mach, flap) table is complete (the coast
+    spans Mach 0 to 0.83, so a table that stops at lower Mach is unusable).
+    For each angle: the apogee at the zero-pitch calibrated mass, the mass that
+    would be calibrated instead, and the airbrake authority (apogee with the
+    flaps at 0 % minus at 100 %) at that mass.
+    """
+    mach_b = V_BURNOUT / isa(H_BURNOUT)[1]
+    all_pitches = cd_vs_pitch(data_path, 0.1, 0.0)[0]
+    pitches = complete_pitches(data_path)
+
+    def apogee(mass, model, flap=0.0):
+        return simulate_apogee(mass, model, isa, V_BURNOUT, H_BURNOUT,
+                               flap=flap)[1]
+
+    rows = []
+    for p in pitches:
+        model = DragModel(*load_cd_table(data_path, p, component='wind'), 'linear')
+        a_mean = apogee(mass0, model)
+        if p > 0:
+            a_rolls = [apogee(mass0, DragModel(*load_cd_table(
+                data_path, p, roll=r, component='wind'), 'linear'))
+                for r in (0, 45)]
+        else:
+            a_rolls = [a_mean, a_mean]
+        mass_p, _ = calibrate_mass(APOGEE_NO_BRAKES, model, isa, V_BURNOUT,
+                                   H_BURNOUT, method='brent', xtol=1e-4)
+        authority = apogee(mass_p, model, 0.0) - apogee(mass_p, model, 100.0)
+        try:
+            flap_eq = flap_for_apogee(APOGEE_WITH_BRAKES, mass_p, model, isa,
+                                      V_BURNOUT, H_BURNOUT)[0]
+        except ValueError:
+            flap_eq = None      # the 11000 ft target is beyond the flaps' reach
+        rows.append(dict(pitch=p, cd_burnout=model(mach_b, 0.0), apogee=a_mean,
+                         apogee_rolls=a_rolls, mass=mass_p, authority=authority,
+                         flap_eq=flap_eq, roll_spread=(cd_roll_spread(data_path, p, 'wind')
+                                                       if p > 0 else 0.0)))
+    return dict(rows=rows, all_pitches=all_pitches, mach_burnout=mach_b)
+
+
+def make_pitch_figure(plt, figdir, data_path, pitch):
+    fig, (ax1, ax2) = new_figure(plt, 2, 10.0, 4.4)
+    series = [(0.1, 0.0, BLUE, '-'), (0.1, 100.0, ORANGE, '-'),
+              (0.2, 0.0, BLUE, '--'), (0.2, 100.0, ORANGE, '--')]
+    for mach, flap, colour, ls in series:
+        x, y = cd_vs_pitch(data_path, mach, flap, component='wind')
+        ax1.plot(x, y, color=colour, ls=ls, marker='o', ms=3.5, lw=1.6,
+                 label=f'Mach {mach}, flap {flap:.0f} %')
+    hi = max(r['pitch'] for r in pitch['rows'])
+    ax1.axvspan(-0.3, hi + 0.3, color=GRID, alpha=0.8, lw=0)
+    ax1.annotate('complete tables\n(pitch 0-2 deg)', (hi + 0.6, 1.9), fontsize=8,
+                 color=INK2, va='top')
+    style_axes(ax1, 'Drag along the flight path vs pitch',
+               'pitch angle (deg)', 'C_D along flight direction')
+    ax1.legend(frameon=False, fontsize=8, labelcolor=INK2, loc='upper center',
+               bbox_to_anchor=(0.5, -0.16), ncol=2)
+
+    rows = pitch['rows']
+    x = np.arange(len(rows))
+    base = rows[0]['apogee']
+    ax2.bar(x, [r['apogee'] - base for r in rows], width=0.5, color=BLUE,
+            label='mean of both roll angles')
+    for k, (marker, lab) in enumerate((('v', 'roll 0 deg'), ('^', 'roll 45 deg'))):
+        ax2.scatter(x, [r['apogee_rolls'][k] - base for r in rows], marker=marker,
+                    color=ORANGE, zorder=3, s=36, label=lab)
+    ax2.axhline(0, color=INK2, lw=1)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([f"{r['pitch']:.0f}" for r in rows])
+    style_axes(ax2, 'Apogee change at the zero-pitch calibrated mass',
+               'pitch angle (deg)', 'apogee change (m)')
+    ax2.legend(frameon=False, fontsize=8, labelcolor=INK2, loc='upper center',
+               bbox_to_anchor=(0.5, -0.16), ncol=3)
+    fig.tight_layout()
+    fig.savefig(figdir / 'fig7_pitch_sensitivity.png', dpi=160, facecolor=SURFACE)
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
@@ -425,33 +507,37 @@ def main(argv=None):
     print(f"Burnout Mach number: {V_BURNOUT / a0:.3f}  (table covers "
           f"{mach[0]:.1f}-{mach[-1]:.1f})")
 
-    print('1/6 verification against the analytical solution ...')
+    print('1/7 verification against the analytical solution ...')
     ver = run_verification(plt, figdir)
 
-    print('2/6 mass calibration ...')
+    print('2/7 mass calibration ...')
     cal = run_calibration(model_lin)
     mass = cal['bisect']['mass']
     check_ref = reference_apogee(mass, model_lin, isa, V_BURNOUT, H_BURNOUT)[1]
 
-    print('3/6 full-model convergence ...')
+    print('3/7 full-model convergence ...')
     conv = run_full_convergence(model_lin, mass)
 
     smooth = run_smoothness_study(model_lin, model_cub, mass)
 
-    print('4/6 airbrake validation ...')
+    print('4/7 airbrake validation ...')
     val = run_validation(model_lin, mass)
 
-    print('5/6 sensitivity and assumptions ...')
+    print('5/7 sensitivity and assumptions ...')
     sens = run_sensitivity(model_lin, mass, APOGEE_NO_BRAKES)
     assum = run_assumptions(model_lin, model_cub, mass, APOGEE_NO_BRAKES)
 
-    print('6/6 performance ...')
+    print('6/7 performance ...')
     perf = run_performance(model_lin, mass)
+
+    print('7/7 angle-of-attack sensitivity ...')
+    pitch = run_pitch_study(data_path, mass)
 
     if plt:
         make_model_figures(plt, figdir, model_lin, model_cub, mass, val)
         make_convergence_figure(plt, figdir, conv)
         make_sensitivity_figure(plt, figdir, sens)
+        make_pitch_figure(plt, figdir, data_path, pitch)
 
     # ---- results summary --------------------------------------------------
     L = []
@@ -515,6 +601,31 @@ def main(argv=None):
     L.append(f"\nSpeed-up from optimisation: {perf['t_baseline'] / perf['t_optimised']:.1f}x. "
              f"Right-hand-side evaluations per run: {perf['n_evals']}.\n")
     L.append('Profile of the baseline run:\n\n```\n' + perf['profile'] + '```\n')
+    L.append('## 8. Angle-of-attack sensitivity (constant pitch from burnout)\n')
+    rows8 = []
+    for r in pitch['rows']:
+        flap_txt = ('target out of reach' if r['flap_eq'] is None
+                    else f"{r['flap_eq']:.1f}")
+        rows8.append((f"{r['pitch']:.0f}", f"{r['cd_burnout']:.3f}",
+                      f"{r['apogee']:.1f}",
+                      f"{r['apogee'] - pitch['rows'][0]['apogee']:+.1f}",
+                      f"{min(r['apogee_rolls']):.0f} to {max(r['apogee_rolls']):.0f}",
+                      f"{r['mass']:.2f}", f"{r['authority']:.0f}", flap_txt))
+    L.append(md_table(['pitch (deg)', f"C_D at Mach {pitch['mach_burnout']:.2f}, flap 0",
+                       'apogee at 0-deg mass (m)', 'change (m)',
+                       'range over roll (m)', 'recalibrated mass (kg)',
+                       'airbrake authority (m)', 'flap for 11000 ft (%)'], rows8))
+    usable = ', '.join(f"{r['pitch']:.0f}" for r in pitch['rows'])
+    L.append(f"\nOnly pitch angles {usable} deg have a complete (Mach, flap) table. "
+             f"The file also contains {', '.join(f'{p:.0f}' for p in pitch['all_pitches'] if p not in [r['pitch'] for r in pitch['rows']])} deg, "
+             "but only at Mach 0.1-0.4 or lower, so they cannot be used for a coast "
+             "that starts at Mach 0.83. Airbrake authority is the apogee with the "
+             "flaps at 0 % minus at 100 %, using the mass recalibrated at that pitch. "
+             "Drag is taken along the flight direction, C_axial cos(pitch) + "
+             "C_normal sin(pitch); the csv column 'Total C_D' is the whole force "
+             "magnitude and would overstate the drag at non-zero pitch. The 0-deg "
+             "row uses the axial coefficient alone, which differs from 'Total C_D' "
+             "by under 0.1 %, hence 3450.2 m and not 3450.0 m.\n")
     text = '\n'.join(L)
     (Path(args.outdir) / 'results.md').write_text(text, encoding='utf-8')
     print(text)

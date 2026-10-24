@@ -18,6 +18,10 @@ apogee, and checks the airbrake prediction against a second measured apogee.
 | **Supplied data** | Burnout 280 m/s at 1800 ft; apogee 3450 m without airbrakes and 11000 ft with airbrakes; 6 in reference diameter (see `src/config.py`) |
 | **Not supplied** | Mass (calibrated from the 3450 m apogee), the airbrake deployment schedule |
 
+The study also quantifies how a small constant angle of attack (pitch 1 and 2 deg,
+the only pitches with a complete CFD table) changes the apogee, the calibrated
+mass and the airbrake authority (`docs/results.md`, section 8).
+
 Invalid inputs (negative mass or speed, flap outside 0-100 %, altitude outside
 the ISA troposphere, impossible calibration targets) raise `ValueError`.
 
@@ -28,7 +32,7 @@ src/
   apogee.py             analytical benchmark (constant rho and C_D)
   integrators.py        Euler and RK4 steps, integration to apogee
   atmosphere.py         ISA troposphere, constant-density atmosphere
-  drag.py               C_D(Mach, flap) table loader and interpolation
+  drag.py               C_D(Mach, flap) table loader (any complete pitch) and interpolation
   coast.py              coast equations of motion and apogee prediction
   calibration.py        bisection, mass calibration, flap-for-apogee
   center_of_pressure.py centre of pressure from the CFD forces and moments
