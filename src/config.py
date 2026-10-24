@@ -17,5 +17,8 @@ APOGEE_WITH_BRAKES = 11000.0 * FT  # apogee with airbrakes, 11000 ft (m)
 D_REF = 6.0 * IN                   # reference diameter, 6 in (m)
 S_REF = np.pi * (D_REF / 2) ** 2   # reference area (m^2)
 
+# --- Verification benchmark ------------------------------------------------
+K_BENCHMARK = 8.8e-5               # k = rho*C_D*S/(2m) of the analytical benchmark (1/m)
+
 # --- Physical constants ----------------------------------------------------
 G = 9.81                           # gravitational acceleration (m/s^2)

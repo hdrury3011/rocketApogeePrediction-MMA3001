@@ -4,18 +4,18 @@ Burnout: v = 280.0 m/s at 548.6 m (Mach 0.828); reference area S = 0.01824 m^2.
 
 ## 1. Verification against the analytical solution
 
-Exact apogee gain (constant rho, C_D; k = 1e-4): 2936.667549 m
+Exact apogee gain (constant rho, C_D; k = 8.8e-05): 3025.893138 m
 
 | dt (s) | Euler error (m) | RK4 error (m) |
 | -----: | --------------: | ------------: |
-| 0.4000 |       3.529e+01 |     4.917e-06 |
-| 0.2000 |       1.766e+01 |     3.034e-07 |
-| 0.1000 |       8.833e+00 |     1.884e-08 |
-| 0.0500 |       4.420e+00 |     1.176e-09 |
-| 0.0250 |       2.211e+00 |     7.549e-11 |
-| 0.0125 |       1.106e+00 |     4.093e-12 |
-| 0.0063 |       5.529e-01 |     2.046e-11 |
-| 0.0031 |       2.765e-01 |     5.457e-12 |
+| 0.4000 |       3.708e+01 |     3.443e-06 |
+| 0.2000 |       1.854e+01 |     2.126e-07 |
+| 0.1000 |       9.288e+00 |     1.321e-08 |
+| 0.0500 |       4.647e+00 |     8.240e-10 |
+| 0.0250 |       2.324e+00 |     5.275e-11 |
+| 0.0125 |       1.162e+00 |     5.912e-12 |
+| 0.0063 |       5.812e-01 |     0.000e+00 |
+| 0.0031 |       2.906e-01 |     1.592e-11 |
 
 Observed order (Euler over 6 steps, RK4 over the first 4): Euler 1.00, RK4 4.01
 
@@ -23,8 +23,8 @@ Observed order (Euler over 6 steps, RK4 over the first 4): Euler 1.00, RK4 4.01
 
 | method | mass (kg) | simulations | time (s) |
 | ------ | --------: | ----------: | -------: |
-| bisect |   35.9923 |          25 |     0.55 |
-| brent  |   35.9923 |          11 |     0.23 |
+| bisect |   35.9923 |          25 |     0.22 |
+| brent  |   35.9923 |          11 |     0.10 |
 
 Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 3450.0 m)
 
@@ -33,14 +33,14 @@ Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 34
 | dt (s) | Euler error (m) | RK4 error (m) | Euler evals | RK4 evals |
 | -----: | --------------: | ------------: | ----------: | --------: |
 | 0.8000 |       6.228e+01 |     3.943e-03 |          90 |       360 |
-| 0.4000 |       3.152e+01 |     2.350e-03 |         119 |       476 |
-| 0.2000 |       1.586e+01 |     3.707e-04 |         177 |       708 |
-| 0.1000 |       7.952e+00 |     2.093e-05 |         293 |      1172 |
-| 0.0500 |       3.983e+00 |     1.214e-05 |         525 |      2100 |
-| 0.0250 |       1.993e+00 |     1.062e-05 |         988 |      3956 |
-| 0.0125 |       9.968e-01 |     6.342e-06 |        1915 |      7664 |
+| 0.4000 |       3.152e+01 |     2.351e-03 |         119 |       476 |
+| 0.2000 |       1.586e+01 |     3.702e-04 |         177 |       708 |
+| 0.1000 |       7.952e+00 |     2.044e-05 |         293 |      1172 |
+| 0.0500 |       3.983e+00 |     1.263e-05 |         525 |      2100 |
+| 0.0250 |       1.993e+00 |     1.111e-05 |         988 |      3956 |
+| 0.0125 |       9.968e-01 |     5.852e-06 |        1915 |      7664 |
 
-Observed order (first 5 steps): Euler 0.99, RK4 2.09
+Observed order (first 5 steps): Euler 0.99, RK4 2.07
 
 ### RK4 error vs smoothness of C_D(Mach) (reference: DOP853, rtol 1e-13)
 
@@ -48,11 +48,11 @@ Observed order (first 5 steps): Euler 0.99, RK4 2.09
 | -----: | ---------------------: | --------------------: | -----------------------------: |
 | 0.8000 |               3.94e-03 |              6.55e-04 |                       2.32e-04 |
 | 0.4000 |               2.35e-03 |              4.55e-05 |                       1.41e-05 |
-| 0.2000 |               3.70e-04 |              1.36e-06 |                       8.71e-07 |
-| 0.1000 |               2.01e-05 |              6.99e-07 |                       5.40e-08 |
-| 0.0500 |               1.30e-05 |              1.37e-07 |                       3.36e-09 |
-| 0.0250 |               1.15e-05 |              5.41e-08 |                       2.02e-10 |
-| 0.0125 |               5.47e-06 |              1.22e-08 |                       4.55e-13 |
+| 0.2000 |               3.70e-04 |              1.35e-06 |                       8.71e-07 |
+| 0.1000 |               2.05e-05 |              6.93e-07 |                       5.40e-08 |
+| 0.0500 |               1.26e-05 |              1.43e-07 |                       3.36e-09 |
+| 0.0250 |               1.11e-05 |              4.80e-08 |                       2.04e-10 |
+| 0.0125 |               5.89e-06 |              1.83e-08 |                       1.36e-12 |
 
 RK4 is fourth order only for the smooth C_D; slope jumps in the interpolated table cap the observed order and set an error floor, far below the modelling uncertainty (metres).
 
@@ -98,29 +98,29 @@ Drag-free apogee: 4545 m. Mass if 3450 m were height gained instead of altitude:
 
 | configuration                                  | time per apogee run (ms) |
 | ---------------------------------------------- | -----------------------: |
-| baseline RK4 (full C_D lookup each evaluation) |                     42.1 |
-| optimised RK4 (flap slice precomputed)         |                     20.1 |
-| adaptive DOP853 (rtol 1e-8)                    |                      8.9 |
+| baseline RK4 (full C_D lookup each evaluation) |                     18.2 |
+| optimised RK4 (flap slice precomputed)         |                      8.9 |
+| adaptive DOP853 (rtol 1e-8)                    |                      4.7 |
 
-Speed-up from optimisation: 2.1x. Right-hand-side evaluations per run: 2100.
+Speed-up from optimisation: 2.0x. Right-hand-side evaluations per run: 2100.
 
 Profile of the baseline run:
 
 ```
-         87157 function calls in 0.068 seconds
+         87157 function calls in 0.040 seconds
 
    Ordered by: cumulative time
    List reduced from 24 to 8 due to restriction <8>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    0.068    0.068 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:80(simulate_apogee)
-        1    0.001    0.001    0.068    0.068 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:56(integrate_to_apogee)
-      525    0.009    0.000    0.067    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:34(rk4_step)
-     2100    0.006    0.000    0.058    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:69(rhs)
-     2100    0.001    0.000    0.047    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:60(<lambda>)
-     2100    0.004    0.000    0.045    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:311(__call__)
-     2100    0.009    0.000    0.035    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:303(_cd_columns)
-     8400    0.009    0.000    0.029    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\.venv\Lib\site-packages\numpy\lib\_function_base_impl.py:1550(interp)
+        1    0.000    0.000    0.040    0.040 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:80(simulate_apogee)
+        1    0.000    0.000    0.040    0.040 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:56(integrate_to_apogee)
+      525    0.004    0.000    0.039    0.000 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:34(rk4_step)
+     2100    0.004    0.000    0.035    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:69(rhs)
+     2100    0.001    0.000    0.028    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:60(<lambda>)
+     2100    0.002    0.000    0.027    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:311(__call__)
+     2100    0.006    0.000    0.021    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:303(_cd_columns)
+     8400    0.007    0.000    0.017    0.000 /usr/local/lib/python3.13/dist-packages/numpy/lib/_function_base_impl.py:1549(interp)
 
 
 ```
