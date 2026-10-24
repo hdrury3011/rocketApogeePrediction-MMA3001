@@ -21,3 +21,18 @@ def csv_path():
         if c and Path(c).is_file():
             return Path(c)
     pytest.skip("CFD data set not found (set APOGEE_DATA or put it in data/)")
+
+
+@pytest.fixture(scope="session")
+def combined_path():
+    """Path to the merged CFD file (with a 'Source' column), or skip the test.
+
+    Set APOGEE_COMBINED to point at a copy, or put combined_cfd_data.csv in data/.
+    """
+    candidates = [os.environ.get("APOGEE_COMBINED"),
+                  ROOT / "data" / "combined_cfd_data.csv"]
+    for c in candidates:
+        if c and Path(c).is_file():
+            return Path(c)
+    pytest.skip("merged CFD file not found (set APOGEE_COMBINED or put "
+                "combined_cfd_data.csv in data/)")

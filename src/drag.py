@@ -5,6 +5,7 @@ rows are the default. Other pitch angles with a complete grid are available
 for the angle-of-attack sensitivity study.
 """
 import ast
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,12 +16,24 @@ _NEEDED = ['Mach Number', 'Pitch (deg)', 'Roll (deg)',
            'Flap (% extension)', 'Total C_D']
 
 
-def _read_cfd(path):
-    """Read the csv and check the columns every loader needs."""
+GRID_SOURCE = 'HPR_grid'     # 'Source' label of the regular-grid CFD rows
+
+
+def _read_cfd(path, grid_only=True):
+    """Read the csv and check the columns every loader needs.
+
+    A merged file carries a 'Source' column (see `load_cd_points`). The table
+    loaders need the regular Mach-by-flap grid, so by default they keep only
+    the rows labelled `GRID_SOURCE`; the scattered rows are for regression.
+    """
     df = pd.read_csv(path, index_col=0)
     missing = [c for c in _NEEDED if c not in df.columns]
     if missing:
         raise ValueError(f"csv is missing columns: {missing}")
+    if grid_only and 'Source' in df.columns:
+        df = df[df['Source'] == GRID_SOURCE]
+        if df.empty:
+            raise ValueError(f"no rows with Source == '{GRID_SOURCE}'")
     return df
 
 
@@ -123,6 +136,54 @@ def load_cd_table(path, pitch=0, roll=None, component='total'):
     return (table.index.to_numpy(dtype=float),
             table.columns.to_numpy(dtype=float),
             table.to_numpy(dtype=float))
+
+
+def load_cd_points(paths, pitch=0, component='wind'):
+    """Scattered drag-coefficient samples from one or more CFD csv files.
+
+    Unlike `load_cd_table` this keeps every sample, whatever its Mach number
+    and flap setting, so gridded and scattered (noisy) runs can be pooled.
+    Samples at the same (source, Mach, flap), such as the two roll angles of
+    a gridded run, are averaged so that they are not counted twice.
+
+    Parameters
+    ----------
+    paths : str, path-like or list of those
+        csv file(s). If a file has a 'Source' column its labels are kept;
+        otherwise every row is labelled with the file name.
+    pitch : float
+        Pitch angle (deg) to extract.
+    component : {'total', 'wind'}
+        See `load_cd_table`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns 'mach', 'flap', 'cd', 'source', sorted by Mach number.
+
+    Raises
+    ------
+    ValueError
+        If no samples exist at that pitch.
+    """
+    if isinstance(paths, (str, bytes)) or hasattr(paths, '__fspath__'):
+        paths = [paths]
+    frames = []
+    for path in paths:
+        df = _read_cfd(path, grid_only=False)
+        df = df.assign(cd=_drag_column(df, component))
+        if 'Source' not in df.columns:
+            df = df.assign(Source=Path(path).stem)
+        df = df[(df['Mach Number'] > 0) & (df['Pitch (deg)'] == pitch)]
+        frames.append(df[['Source', 'Mach Number', 'Flap (% extension)', 'cd']])
+    pts = pd.concat(frames, ignore_index=True)
+    if pts.empty:
+        raise ValueError(f"no samples at pitch {pitch} deg")
+    pts = (pts.groupby(['Source', 'Mach Number', 'Flap (% extension)'],
+                       as_index=False)['cd'].mean()
+           .rename(columns={'Source': 'source', 'Mach Number': 'mach',
+                            'Flap (% extension)': 'flap'}))
+    return pts.sort_values(['mach', 'flap', 'source']).reset_index(drop=True)
 
 
 def complete_pitches(path):
