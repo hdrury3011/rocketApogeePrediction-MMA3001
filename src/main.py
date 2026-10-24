@@ -134,7 +134,7 @@ def observed_orders(dts, errs):
 # ---------------------------------------------------------------------------
 def run_verification(plt, figdir):
     """Euler/RK4 error against the closed-form apogee (constant rho and C_D)."""
-    rho, cd0, k = 1.225, 0.40, 1.0e-4
+    rho, cd0, k = 1.225, 0.40, 8.8*10**-5
     mass = rho * cd0 * S_REF / (2 * k)                    # gives k exactly
     atm = constant_atmosphere(rho, 340.29)
     exact = analytic_apogee_height(V_BURNOUT, k, G)
@@ -696,7 +696,7 @@ def main(argv=None):
              f'(Mach {V_BURNOUT / a0:.3f}); reference area S = {S_REF:.5f} m^2.\n')
     if ver:
         L.append('## 1. Verification against the analytical solution\n')
-        L.append(f"Exact apogee gain (constant rho, C_D; k = 1e-4): {ver['exact']:.6f} m\n")
+        L.append(f"Exact apogee gain (constant rho, C_D; k = 8.8e-5): {ver['exact']:.6f} m\n")
         rows = [(f'{dt:.4f}', f"{ver['Euler']['errs'][i]:.3e}", f"{ver['RK4']['errs'][i]:.3e}")
                 for i, dt in enumerate(ver['dts'])]
         L.append(md_table(['dt (s)', 'Euler error (m)', 'RK4 error (m)'], rows))
