@@ -23,8 +23,8 @@ Observed order (Euler over 6 steps, RK4 over the first 4): Euler 1.00, RK4 4.01
 
 | method | mass (kg) | simulations | time (s) |
 |---|---|---|---|
-| bisect | 35.9923 | 25 | 0.57 |
-| brent | 35.9923 | 11 | 0.26 |
+| bisect | 35.9923 | 25 | 0.55 |
+| brent | 35.9923 | 11 | 0.25 |
 
 Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 3450.0 m)
 
@@ -98,29 +98,29 @@ Drag-free apogee: 4545 m. Mass if 3450 m were height gained instead of altitude:
 
 | configuration | time per apogee run (ms) |
 |---|---|
-| baseline RK4 (full C_D lookup each evaluation) | 44.9 |
+| baseline RK4 (full C_D lookup each evaluation) | 43.7 |
 | optimised RK4 (flap slice precomputed) | 21.0 |
-| adaptive DOP853 (rtol 1e-8) | 9.2 |
+| adaptive DOP853 (rtol 1e-8) | 9.1 |
 
 Speed-up from optimisation: 2.1x. Right-hand-side evaluations per run: 2100.
 
 Profile of the baseline run:
 
 ```
-         87157 function calls in 0.070 seconds
+         87157 function calls in 0.071 seconds
 
    Ordered by: cumulative time
    List reduced from 24 to 8 due to restriction <8>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    0.070    0.070 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:80(simulate_apogee)
-        1    0.001    0.001    0.070    0.070 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:56(integrate_to_apogee)
-      525    0.009    0.000    0.069    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:34(rk4_step)
-     2100    0.006    0.000    0.059    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:69(rhs)
-     2100    0.002    0.000    0.048    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:60(<lambda>)
-     2100    0.004    0.000    0.046    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:116(__call__)
-     2100    0.010    0.000    0.036    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:108(_cd_columns)
-     8400    0.009    0.000    0.030    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\.venv\Lib\site-packages\numpy\lib\_function_base_impl.py:1550(interp)
+        1    0.000    0.000    0.071    0.071 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:80(simulate_apogee)
+        1    0.001    0.001    0.071    0.071 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:56(integrate_to_apogee)
+      525    0.009    0.000    0.071    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:34(rk4_step)
+     2100    0.006    0.000    0.060    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:69(rhs)
+     2100    0.002    0.000    0.049    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:60(<lambda>)
+     2100    0.004    0.000    0.047    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:116(__call__)
+     2100    0.010    0.000    0.037    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:108(_cd_columns)
+     8400    0.009    0.000    0.031    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\.venv\Lib\site-packages\numpy\lib\_function_base_impl.py:1550(interp)
 
 
 ```

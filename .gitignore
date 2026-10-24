@@ -1,0 +1,10 @@
+# Virtual environment
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor settings
+.vscode/
