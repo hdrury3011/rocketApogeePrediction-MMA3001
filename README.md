@@ -32,8 +32,9 @@ src/
   apogee.py             analytical benchmark (constant rho and C_D)
   integrators.py        Euler and RK4 steps, integration to apogee
   atmosphere.py         ISA troposphere, constant-density atmosphere
-  drag.py               C_D(Mach, flap) table loader (any complete pitch) and interpolation
+  drag.py               CFD loaders (table at any complete pitch, scattered samples) and interpolation
   coast.py              coast equations of motion and apogee prediction
+  regression.py         least-squares polynomial C_D(Mach, flap) with cross-validation
   calibration.py        bisection, mass calibration, flap-for-apogee
   center_of_pressure.py centre of pressure from the CFD forces and moments
   config.py             known inputs and constants
@@ -60,6 +61,14 @@ Rocketry (HPR) Meridian Rocket, used here with the permission of Monash HPR.
 The data is not covered by this repository's MIT licence. Please do not
 redistribute it without permission from Monash HPR.
 
+Optionally, scattered (noisy) CFD runs of the same rocket, also supplied by Monash
+HPR, can be added. They are not stored in this repository. With them, section 9
+of `docs/results.md` fits a regression drag model to every sample (about 350
+samples at pitch 0 instead of the 27 gridded values). Either pass the file with
+`--extra-data PATH`, or merge it with the gridded data into one csv that has a
+`Source` column (`HPR_grid` for the gridded rows) and pass that as `--data`; the
+table loaders then use only the `HPR_grid` rows.
+
 The model uses the drag coefficient at zero pitch as a function of Mach number
 and flap extension. Burnout conditions (280 m/s at 1800 ft) and the two
 measured apogees (3450 m without airbrakes, 11,000 ft with) are set in
@@ -68,11 +77,18 @@ measured apogees (3450 m without airbrakes, 11,000 ft with) are set in
 ## Run
 
 ```
-python src/main.py --data data/project_data_set.csv
+python src/main.py
+```
+
+`--data` defaults to `data/Project Data Set.csv`. To add the scattered runs:
+
+```
+python src/main.py --extra-data PATH_TO_SCATTERED_RUNS.csv
+python src/main.py --data data/combined_cfd_data.csv      # merged file with a Source column
 ```
 
 This writes `docs/results.md` and the figures in `docs/figures/`.
-Use `--no-plots` to skip the figures.
+Use `--no-plots` to skip the figures. Without extra data, section 9 is omitted.
 
 ## Tests
 
@@ -80,7 +96,9 @@ Use `--no-plots` to skip the figures.
 pytest
 ```
 
-Set `APOGEE_DATA` to the csv path to run the tests that need the data set.
+Set `APOGEE_DATA` to the csv path to run the tests that need the data set, and
+`APOGEE_COMBINED` for the merged file (or put them in `data/`). Tests skip if a
+file is missing.
 
 ## Documentation
 
@@ -88,7 +106,7 @@ HTML documentation of the source code is generated with pdoc:
 
 ```
 set PYTHONPATH=src                  # PowerShell: $env:PYTHONPATH = "src"
-pdoc -o docs/api apogee atmosphere calibration center_of_pressure coast config drag integrators main
+pdoc -o docs/api apogee atmosphere calibration center_of_pressure coast config drag integrators main regression
 ```
 
 ## Licence

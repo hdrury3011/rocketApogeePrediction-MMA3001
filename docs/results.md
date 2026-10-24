@@ -23,8 +23,8 @@ Observed order (Euler over 6 steps, RK4 over the first 4): Euler 1.00, RK4 4.01
 
 | method | mass (kg) | simulations | time (s) |
 |---|---|---|---|
-| bisect | 35.9923 | 25 | 0.65 |
-| brent | 35.9923 | 11 | 0.20 |
+| bisect | 35.9923 | 25 | 0.60 |
+| brent | 35.9923 | 11 | 0.23 |
 
 Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 3450.0 m)
 
@@ -98,29 +98,29 @@ Drag-free apogee: 4545 m. Mass if 3450 m were height gained instead of altitude:
 
 | configuration | time per apogee run (ms) |
 |---|---|
-| baseline RK4 (full C_D lookup each evaluation) | 32.2 |
-| optimised RK4 (flap slice precomputed) | 29.8 |
-| adaptive DOP853 (rtol 1e-8) | 17.0 |
+| baseline RK4 (full C_D lookup each evaluation) | 49.2 |
+| optimised RK4 (flap slice precomputed) | 28.2 |
+| adaptive DOP853 (rtol 1e-8) | 14.9 |
 
-Speed-up from optimisation: 1.1x. Right-hand-side evaluations per run: 2100.
+Speed-up from optimisation: 1.7x. Right-hand-side evaluations per run: 2100.
 
 Profile of the baseline run:
 
 ```
-         87157 function calls in 0.117 seconds
+         87157 function calls in 0.112 seconds
 
    Ordered by: cumulative time
    List reduced from 24 to 8 due to restriction <8>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    0.117    0.117 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:80(simulate_apogee)
-        1    0.001    0.001    0.117    0.117 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:56(integrate_to_apogee)
-      525    0.015    0.000    0.116    0.000 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:34(rk4_step)
-     2100    0.011    0.000    0.100    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:69(rhs)
-     2100    0.003    0.000    0.079    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:60(<lambda>)
-     2100    0.007    0.000    0.076    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:250(__call__)
-     2100    0.017    0.000    0.059    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:242(_cd_columns)
-     8400    0.016    0.000    0.046    0.000 /usr/local/lib/python3.13/dist-packages/numpy/lib/_function_base_impl.py:1549(interp)
+        1    0.000    0.000    0.112    0.112 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:80(simulate_apogee)
+        1    0.001    0.001    0.112    0.112 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:56(integrate_to_apogee)
+      525    0.014    0.000    0.111    0.000 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:34(rk4_step)
+     2100    0.011    0.000    0.096    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:69(rhs)
+     2100    0.003    0.000    0.077    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:60(<lambda>)
+     2100    0.007    0.000    0.074    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:311(__call__)
+     2100    0.016    0.000    0.057    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:303(_cd_columns)
+     8400    0.016    0.000    0.045    0.000 /usr/local/lib/python3.13/dist-packages/numpy/lib/_function_base_impl.py:1549(interp)
 
 
 ```
@@ -134,3 +134,43 @@ Profile of the baseline run:
 | 2 | 0.424 | 3407.6 | -42.7 | 3404 to 3412 | 38.08 | 244 | 46.8 |
 
 Only pitch angles 0, 1, 2 deg have a complete (Mach, flap) table. The file also contains 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 20 deg, but only at Mach 0.1-0.4 or lower, so they cannot be used for a coast that starts at Mach 0.83. Airbrake authority is the apogee with the flaps at 0 % minus at 100 %, using the mass recalibrated at that pitch. Drag is taken along the flight direction, C_axial cos(pitch) + C_normal sin(pitch); the csv column 'Total C_D' is the whole force magnitude and would overstate the drag at non-zero pitch. The 0-deg row uses the axial coefficient alone, which differs from 'Total C_D' by under 0.1 %, hence 3450.2 m and not 3450.0 m.
+
+
+## 9. Regression drag model from all CFD samples
+
+| pitch (deg) | gridded samples | scattered samples | total |
+|---|---|---|---|
+| 0 | 27 | 320 | 347 |
+| 2 | 27 | 320 | 347 |
+
+Samples at the same Mach number and flap (the two roll angles of a gridded run) are averaged, so the gridded runs count 27 values at pitch 0, not the 54 rows in the file. Polynomial degrees chosen by 5-fold cross-validation, repeated 3 times, with the one-standard-error rule: degree 5 in Mach and 2 in flap (18 coefficients).
+
+| deg Mach | deg flap | coefficients | CV RMS error (%) | CV bias (%) | selected |
+|---|---|---|---|---|---|
+| 9 | 2 | 30 | 0.543 | -0.003 |  |
+| 8 | 2 | 27 | 0.547 | -0.002 |  |
+| 5 | 2 | 18 | 0.549 | +0.006 | yes |
+| 7 | 2 | 24 | 0.550 | +0.006 |  |
+| 6 | 2 | 21 | 0.555 | +0.007 |  |
+
+### Error on the scattered runs
+
+| drag model | fitted to | RMS error (%) | bias (%) |
+|---|---|---|---|
+| table, linear | gridded runs | 0.680 | +0.454 |
+| table, cubic | gridded runs | 0.608 | +0.338 |
+| regression, cross-validated | gridded + other scattered runs | 0.549 | +0.006 |
+
+Independent check: a regression fitted to the scattered runs alone predicts the 27 gridded values with RMS error 0.58 % (bias -0.07 %). Offset of the scattered runs from the gridded runs after accounting for Mach and flap: -0.03 % +/- 0.12 % (one standard error).
+
+### Effect on the apogee results
+
+| quantity | table (gridded runs) | regression (all samples) |
+|---|---|---|
+| calibrated mass for 3450 m (kg) | 35.992 | 35.876 |
+| apogee at the table mass (m) | 3450.0 | 3452.4 |
+| constant flap for 11000 ft (%) | 41.1 | 41.4 |
+| apogee with 100 % flap (m) | 3201.5 | 3198.5 |
+| apogee change at 2 deg pitch (m) | -42.7 | -42.7 |
+
+The 2-deg row compares both pitches at the same mass: for the table the zero-pitch calibrated mass, for the regression the regression-calibrated mass.

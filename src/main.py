@@ -2,7 +2,11 @@
 
 Usage (from the repository root, with the virtual environment active)::
 
-    python src/main.py --data data/project_data_set.csv
+    python src/main.py --data "data/Project Data Set.csv"
+
+Optional: add scattered (noisy) CFD runs with ``--extra-data PATH``, or pass a
+merged csv that has a 'Source' column as ``--data``; section 9 then fits a
+regression drag model to all samples.
 
 Steps
 -----
@@ -13,6 +17,7 @@ Steps
 5. Sensitivity, modelling-assumption and performance studies.
 6. Angle-of-attack sensitivity: apogee, calibrated mass and airbrake
    authority at the pitch angles whose CFD table is complete.
+7. Regression drag model fitted to all CFD samples (needs extra data).
 
 Figures are saved to <outdir>/figures and a results summary to
 <outdir>/results.md.
@@ -34,9 +39,11 @@ from calibration import bisect, calibrate_mass, flap_for_apogee
 from coast import reference_apogee, simulate_apogee, trajectory
 from config import (APOGEE_NO_BRAKES, APOGEE_WITH_BRAKES, G, H_BURNOUT,
                     S_REF, V_BURNOUT)
-from drag import (DragModel, cd_roll_spread, cd_vs_pitch,
-                  complete_pitches, load_cd_table)
+from drag import (GRID_SOURCE, DragModel, cd_roll_spread, cd_vs_pitch,
+                  complete_pitches, load_cd_points, load_cd_table)
 from integrators import euler_step, rk4_step
+from regression import (RegressionDragModel, cross_validate, select_degrees,
+                        source_offset)
 
 # Palette validated with the dataviz skill's validate_palette.js (light mode).
 BLUE, ORANGE, AQUA = '#2a78d6', '#eb6834', '#1baf7a'
@@ -476,11 +483,112 @@ def make_pitch_figure(plt, figdir, data_path, pitch):
     plt.close(fig)
 
 
+def run_regression_study(data_path, extra_path, model_lin, model_cub, mass_table):
+    """Fit C_D(Mach, flap) by regression to every sample and compare with the table.
+
+    The samples are the gridded CFD runs plus the scattered (noisy) runs.
+    Returns None if there are no scattered runs to add.
+    """
+    paths = [data_path] if extra_path is None else [data_path, extra_path]
+    pts = load_cd_points(paths, pitch=0)
+    grid_label = (GRID_SOURCE if (pts.source == GRID_SOURCE).any()
+                  else Path(data_path).stem)
+    noisy = (pts.source != grid_label).to_numpy()
+    if not noisy.any():
+        return None
+    M, F, Y = (pts[c].to_numpy() for c in ('mach', 'flap', 'cd'))
+
+    degrees, cv_table = select_degrees(M, F, Y, test_mask=noisy)
+    reg = RegressionDragModel.fit(M, F, Y, *degrees)
+    cv = cross_validate(M, F, Y, *degrees, test_mask=noisy)
+
+    def rel_error(model):
+        pred = np.array([model(m, f) for m, f in zip(M[noisy], F[noisy])])
+        e = pred / Y[noisy] - 1.0
+        return float(np.sqrt(np.mean(e**2))), float(e.mean())
+
+    methods = [('table, linear', 'gridded runs', *rel_error(model_lin)),
+               ('table, cubic', 'gridded runs', *rel_error(model_cub)),
+               ('regression, cross-validated', 'gridded + other scattered runs',
+                cv['rmse'], cv['bias'])]
+
+    # Independent check: fit on the scattered runs alone, predict the gridded runs.
+    only_noisy = RegressionDragModel.fit(M[noisy], F[noisy], Y[noisy], *degrees)
+    e = only_noisy.predict(M[~noisy], F[~noisy]) / Y[~noisy] - 1.0
+    independent = dict(rmse=float(np.sqrt(np.mean(e**2))), bias=float(e.mean()),
+                       n=int((~noisy).sum()))
+    offset = source_offset(M, F, Y, noisy, *degrees)
+
+    mass_reg, _ = calibrate_mass(APOGEE_NO_BRAKES, reg, isa, V_BURNOUT, H_BURNOUT,
+                                 method='brent', xtol=1e-4)
+    flaps = [0, 25, 50, 75, 100]
+    sweep = [simulate_apogee(mass_reg, reg, isa, V_BURNOUT, H_BURNOUT, flap=f)[1]
+             for f in flaps]
+    flap_eq = flap_for_apogee(APOGEE_WITH_BRAKES, mass_reg, reg, isa, V_BURNOUT,
+                              H_BURNOUT)[0]
+    at_table_mass = simulate_apogee(mass_table, reg, isa, V_BURNOUT, H_BURNOUT)[1]
+
+    # Pitch 2 deg with the same degrees (both roll angles pooled).
+    pts2 = load_cd_points(paths, pitch=2)
+    reg2 = RegressionDragModel.fit(pts2['mach'], pts2['flap'], pts2['cd'], *degrees)
+    drop2 = (simulate_apogee(mass_reg, reg2, isa, V_BURNOUT, H_BURNOUT)[1]
+             - simulate_apogee(mass_reg, reg, isa, V_BURNOUT, H_BURNOUT)[1])
+    counts = {p: (int((pp.source == grid_label).sum()),
+                  int((pp.source != grid_label).sum()))
+              for p, pp in ((0, pts), (2, pts2))}
+    return dict(pts=pts, noisy=noisy, degrees=degrees, cv_table=cv_table,
+                reg=reg, methods=methods, independent=independent, offset=offset,
+                mass=mass_reg, mass_table=mass_table, at_table_mass=at_table_mass,
+                flaps=flaps, sweep=sweep, flap_eq=flap_eq, drop2=drop2,
+                counts=counts, grid_label=grid_label)
+
+
+def make_regression_figure(plt, figdir, reg_study, model_lin):
+    reg, pts, noisy = reg_study['reg'], reg_study['pts'], reg_study['noisy']
+    fig, (ax1, ax2) = new_figure(plt, 2, 10.0, 4.6)
+    bands = [(0.0, BLUE, 'flap 0 %', lambda f: f <= 5),
+             (50.0, AQUA, 'flap 50 %', lambda f: np.abs(f - 50) <= 5),
+             (100.0, ORANGE, 'flap 100 %', lambda f: f >= 95)]
+    mm = np.linspace(*reg.mach_range, 200)
+    for flap, colour, label, band in bands:
+        sel = noisy & band(pts['flap'].to_numpy())
+        ax1.scatter(pts['mach'][sel], pts['cd'][sel], s=9, color=colour,
+                    alpha=0.35, linewidths=0)
+        grid = ~noisy & (pts['flap'].to_numpy() == flap)
+        ax1.scatter(pts['mach'][grid], pts['cd'][grid], s=34, color=colour,
+                    edgecolor=INK, linewidths=0.8, zorder=4)
+        ax1.plot(mm, reg.predict(mm, flap), color=colour, lw=2, label=label)
+        ax1.plot(mm, [model_lin(m, flap) for m in mm], color=colour, lw=1,
+                 ls='--')
+    style_axes(ax1, 'Regression surface through all samples', 'Mach number',
+               'C_D along flight direction')
+    ax1.legend(frameon=False, fontsize=8, labelcolor=INK2, loc='upper center',
+               bbox_to_anchor=(0.5, -0.16), ncol=3)
+    ax1.annotate('dots: scattered runs  |  outlined: gridded runs  |  solid: regression  |  dashed: linear table',
+                 (0.5, -0.30), xycoords='axes fraction', ha='center', fontsize=7.5,
+                 color=INK2)
+
+    names = ['table,\nlinear', 'table,\ncubic', 'regression\n(cross-validated)']
+    vals = [100 * m[2] for m in reg_study['methods']]
+    ax2.bar(names, vals, width=0.5, color=[ORANGE, ORANGE, BLUE])
+    for i, v in enumerate(vals):
+        ax2.text(i, v + 0.01, f'{v:.2f} %', ha='center', fontsize=9, color=INK)
+    style_axes(ax2, 'Error on held-out scattered runs', None, 'RMS error in C_D (%)')
+    ax2.tick_params(axis='x', labelsize=8.5)
+    fig.tight_layout()
+    fig.subplots_adjust(bottom=0.27)
+    fig.savefig(figdir / 'fig8_regression_drag.png', dpi=160, facecolor=SURFACE)
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--data', default='data/Project Data Set.csv',
                         help='CFD csv file (default: data/Project Data Set.csv)')
+    parser.add_argument('--extra-data', default=None,
+                        help='csv of scattered (noisy) CFD runs to add to the regression '
+                             'fit (not needed if --data has a Source column)')
     parser.add_argument('--outdir', default='docs', help='output folder')
     parser.add_argument('--no-plots', action='store_true', help='skip figures')
     args = parser.parse_args(argv)
@@ -489,6 +597,11 @@ def main(argv=None):
     if not data_path.is_file():
         print(f"error: data file not found: {data_path}\n"
               "Place the CFD csv there or pass --data PATH.", file=sys.stderr)
+        return 1
+
+    extra_path = Path(args.extra_data) if args.extra_data else None
+    if extra_path is not None and not extra_path.is_file():
+        print(f"error: extra data file not found: {extra_path}", file=sys.stderr)
         return 1
 
     plt = None
@@ -507,37 +620,44 @@ def main(argv=None):
     print(f"Burnout Mach number: {V_BURNOUT / a0:.3f}  (table covers "
           f"{mach[0]:.1f}-{mach[-1]:.1f})")
 
-    print('1/7 verification against the analytical solution ...')
+    print('1/8 verification against the analytical solution ...')
     ver = run_verification(plt, figdir)
 
-    print('2/7 mass calibration ...')
+    print('2/8 mass calibration ...')
     cal = run_calibration(model_lin)
     mass = cal['bisect']['mass']
     check_ref = reference_apogee(mass, model_lin, isa, V_BURNOUT, H_BURNOUT)[1]
 
-    print('3/7 full-model convergence ...')
+    print('3/8 full-model convergence ...')
     conv = run_full_convergence(model_lin, mass)
 
     smooth = run_smoothness_study(model_lin, model_cub, mass)
 
-    print('4/7 airbrake validation ...')
+    print('4/8 airbrake validation ...')
     val = run_validation(model_lin, mass)
 
-    print('5/7 sensitivity and assumptions ...')
+    print('5/8 sensitivity and assumptions ...')
     sens = run_sensitivity(model_lin, mass, APOGEE_NO_BRAKES)
     assum = run_assumptions(model_lin, model_cub, mass, APOGEE_NO_BRAKES)
 
-    print('6/7 performance ...')
+    print('6/8 performance ...')
     perf = run_performance(model_lin, mass)
 
-    print('7/7 angle-of-attack sensitivity ...')
+    print('7/8 angle-of-attack sensitivity ...')
     pitch = run_pitch_study(data_path, mass)
+
+    print('8/8 regression drag model ...')
+    regs = run_regression_study(data_path, extra_path, model_lin, model_cub, mass)
+    if regs is None:
+        print('    skipped: no scattered CFD runs (use --extra-data or a merged csv)')
 
     if plt:
         make_model_figures(plt, figdir, model_lin, model_cub, mass, val)
         make_convergence_figure(plt, figdir, conv)
         make_sensitivity_figure(plt, figdir, sens)
         make_pitch_figure(plt, figdir, data_path, pitch)
+        if regs:
+            make_regression_figure(plt, figdir, regs, model_lin)
 
     # ---- results summary --------------------------------------------------
     L = []
@@ -626,6 +746,42 @@ def main(argv=None):
              "magnitude and would overstate the drag at non-zero pitch. The 0-deg "
              "row uses the axial coefficient alone, which differs from 'Total C_D' "
              "by under 0.1 %, hence 3450.2 m and not 3450.0 m.\n")
+    if regs:
+        L.append('\n## 9. Regression drag model from all CFD samples\n')
+        n_g0, n_s0 = regs['counts'][0]
+        n_g2, n_s2 = regs['counts'][2]
+        L.append(md_table(['pitch (deg)', 'gridded samples', 'scattered samples', 'total'],
+                          [(0, n_g0, n_s0, n_g0 + n_s0), (2, n_g2, n_s2, n_g2 + n_s2)]))
+        dm, df_ = regs['degrees']
+        L.append(f"\nSamples at the same Mach number and flap (the two roll angles of a gridded run) are averaged, "
+                 f"so the gridded runs count {n_g0} values at pitch 0, not the {2 * n_g0} rows in the file. "
+                 f"Polynomial degrees chosen by 5-fold cross-validation, repeated 3 times, with the "
+                 f"one-standard-error rule: degree {dm} in Mach and {df_} in flap "
+                 f"({regs['reg'].n_params} coefficients).\n")
+        best = sorted(regs['cv_table'], key=lambda t: t['rmse'])[:5]
+        pick = [t for t in regs['cv_table'] if (t['deg_mach'], t['deg_flap']) == regs['degrees']][0]
+        shown = best + ([pick] if pick not in best else [])
+        L.append(md_table(['deg Mach', 'deg flap', 'coefficients', 'CV RMS error (%)', 'CV bias (%)', 'selected'],
+                          [(t['deg_mach'], t['deg_flap'], t['n_params'], f"{100 * t['rmse']:.3f}",
+                            f"{100 * t['bias']:+.3f}", 'yes' if t is pick else '') for t in shown]))
+        L.append('\n### Error on the scattered runs\n')
+        L.append(md_table(['drag model', 'fitted to', 'RMS error (%)', 'bias (%)'],
+                          [(a, b, f'{100 * c:.3f}', f'{100 * d:+.3f}') for a, b, c, d in regs['methods']]))
+        ind = regs['independent']
+        L.append(f"\nIndependent check: a regression fitted to the scattered runs alone predicts the "
+                 f"{ind['n']} gridded values with RMS error {100 * ind['rmse']:.2f} % (bias {100 * ind['bias']:+.2f} %). "
+                 f"Offset of the scattered runs from the gridded runs after accounting for Mach and flap: "
+                 f"{100 * regs['offset'][0]:+.2f} % +/- {100 * regs['offset'][1]:.2f} % (one standard error).\n")
+        L.append('### Effect on the apogee results\n')
+        L.append(md_table(['quantity', 'table (gridded runs)', 'regression (all samples)'],
+                          [('calibrated mass for 3450 m (kg)', f"{regs['mass_table']:.3f}", f"{regs['mass']:.3f}"),
+                           ('apogee at the table mass (m)', f'{APOGEE_NO_BRAKES:.1f}', f"{regs['at_table_mass']:.1f}"),
+                           ('constant flap for 11000 ft (%)', f"{val['flap_eq']:.1f}", f"{regs['flap_eq']:.1f}"),
+                           ('apogee with 100 % flap (m)', f"{val['sweep'][-1]:.1f}", f"{regs['sweep'][-1]:.1f}"),
+                           ('apogee change at 2 deg pitch (m)', f"{pitch['rows'][-1]['apogee'] - pitch['rows'][0]['apogee']:+.1f}",
+                            f"{regs['drop2']:+.1f}")]))
+        L.append("\nThe 2-deg row compares both pitches at the same mass: for the table the zero-pitch calibrated "
+                 "mass, for the regression the regression-calibrated mass.\n")
     text = '\n'.join(L)
     (Path(args.outdir) / 'results.md').write_text(text, encoding='utf-8')
     print(text)
