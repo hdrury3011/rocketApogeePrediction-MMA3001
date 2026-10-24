@@ -30,3 +30,18 @@ def test_missing_extra_file_returns_error(csv_path, tmp_path, capsys):
                       '--outdir', str(tmp_path)])
     assert code == 1
     assert 'extra data file not found' in capsys.readouterr().err
+
+
+def test_md_table_columns_are_aligned():
+    table = main.md_table(['name', 'value (m)'], [('short', '1.5'), ('a longer name', '-1234.25')])
+    lines = table.split('\n')
+    assert len({len(line) for line in lines}) == 1          # every line the same width
+    assert lines[1].replace('|', '').replace('-', '').replace(':', '').strip() == ''
+    assert lines[1].split('|')[2].strip().endswith(':')     # numbers right-aligned
+    assert lines[2].split('|')[1].strip() == 'short'
+
+
+def test_md_table_rejects_ragged_rows():
+    import pytest
+    with pytest.raises(ValueError):
+        main.md_table(['a', 'b'], [('1',)])

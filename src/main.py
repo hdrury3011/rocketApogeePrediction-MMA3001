@@ -87,11 +87,41 @@ def timed(fn, repeats=3):
     return out, best
 
 
+def _is_number(text):
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return False
+
+
 def md_table(headers, rows):
-    lines = ['| ' + ' | '.join(headers) + ' |',
-             '|' + '|'.join(['---'] * len(headers)) + '|']
-    lines += ['| ' + ' | '.join(str(c) for c in r) + ' |' for r in rows]
-    return '\n'.join(lines)
+    """Markdown table with every column padded to one width.
+
+    Columns whose body cells are all numbers are right-aligned, the rest
+    left-aligned, so the file reads as a table in a plain text editor as well
+    as when rendered.
+
+    Raises
+    ------
+    ValueError
+        If a row does not have one cell per header.
+    """
+    heads = [str(h) for h in headers]
+    body = [[str(c) for c in r] for r in rows]
+    if any(len(r) != len(heads) for r in body):
+        raise ValueError("every row needs one cell per header")
+    n = len(heads)
+    widths = [max([3, len(heads[j])] + [len(r[j]) for r in body]) for j in range(n)]
+    numeric = [bool(body) and all(_is_number(r[j]) for r in body) for j in range(n)]
+
+    def line(cells):
+        return '| ' + ' | '.join(c.rjust(w) if num else c.ljust(w)
+                                  for c, w, num in zip(cells, widths, numeric)) + ' |'
+
+    rule = '| ' + ' | '.join('-' * (w - 1) + ':' if num else '-' * w
+                             for w, num in zip(widths, numeric)) + ' |'
+    return '\n'.join([line(heads), rule] + [line(r) for r in body])
 
 
 def observed_orders(dts, errs):
