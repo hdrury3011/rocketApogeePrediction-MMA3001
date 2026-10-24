@@ -49,9 +49,17 @@ pip install -r requirements.txt
 
 ## Data
 
-The CFD data set (`project_data_set.csv`) is not stored in this repository
-(`data/` is in `.gitignore`). Put it in `data/` or pass its location to the
-scripts. Tests that need it are skipped if it is missing.
+The CFD drag data is included at `data/Project Data Set.csv`. It is an extract
+from a Computational Fluid Dynamics simulation of the Monash High Powered
+Rocketry (HPR) Meridian Rocket, used here with the permission of Monash HPR.
+
+The data is not covered by this repository's MIT licence. Please do not
+redistribute it without permission from Monash HPR.
+
+The model uses the drag coefficient at zero pitch as a function of Mach number
+and flap extension. Burnout conditions (280 m/s at 1800 ft) and the two
+measured apogees (3450 m without airbrakes, 11,000 ft with) are set in
+`src/config.py`.
 
 ## Run
 
