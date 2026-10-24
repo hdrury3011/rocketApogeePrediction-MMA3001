@@ -23,8 +23,8 @@ Observed order (Euler over 6 steps, RK4 over the first 4): Euler 1.00, RK4 4.01
 
 | method | mass (kg) | simulations | time (s) |
 |---|---|---|---|
-| bisect | 35.9923 | 25 | 0.55 |
-| brent | 35.9923 | 11 | 0.25 |
+| bisect | 35.9923 | 25 | 0.65 |
+| brent | 35.9923 | 11 | 0.20 |
 
 Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 3450.0 m)
 
@@ -33,14 +33,14 @@ Check with DOP853 reference at the calibrated mass: apogee 3450.001 m (target 34
 | dt (s) | Euler error (m) | RK4 error (m) | Euler evals | RK4 evals |
 |---|---|---|---|---|
 | 0.8000 | 6.228e+01 | 3.943e-03 | 90 | 360 |
-| 0.4000 | 3.152e+01 | 2.350e-03 | 119 | 476 |
-| 0.2000 | 1.586e+01 | 3.707e-04 | 177 | 708 |
-| 0.1000 | 7.952e+00 | 2.093e-05 | 293 | 1172 |
-| 0.0500 | 3.983e+00 | 1.214e-05 | 525 | 2100 |
-| 0.0250 | 1.993e+00 | 1.062e-05 | 988 | 3956 |
-| 0.0125 | 9.968e-01 | 6.342e-06 | 1915 | 7664 |
+| 0.4000 | 3.152e+01 | 2.351e-03 | 119 | 476 |
+| 0.2000 | 1.586e+01 | 3.702e-04 | 177 | 708 |
+| 0.1000 | 7.952e+00 | 2.044e-05 | 293 | 1172 |
+| 0.0500 | 3.983e+00 | 1.263e-05 | 525 | 2100 |
+| 0.0250 | 1.993e+00 | 1.111e-05 | 988 | 3956 |
+| 0.0125 | 9.968e-01 | 5.852e-06 | 1915 | 7664 |
 
-Observed order (first 5 steps): Euler 0.99, RK4 2.09
+Observed order (first 5 steps): Euler 0.99, RK4 2.07
 
 ### RK4 error vs smoothness of C_D(Mach) (reference: DOP853, rtol 1e-13)
 
@@ -48,11 +48,11 @@ Observed order (first 5 steps): Euler 0.99, RK4 2.09
 |---|---|---|---|
 | 0.8000 | 3.94e-03 | 6.55e-04 | 2.32e-04 |
 | 0.4000 | 2.35e-03 | 4.55e-05 | 1.41e-05 |
-| 0.2000 | 3.70e-04 | 1.36e-06 | 8.71e-07 |
-| 0.1000 | 2.01e-05 | 6.99e-07 | 5.40e-08 |
-| 0.0500 | 1.30e-05 | 1.37e-07 | 3.36e-09 |
-| 0.0250 | 1.15e-05 | 5.41e-08 | 2.02e-10 |
-| 0.0125 | 5.47e-06 | 1.22e-08 | 4.55e-13 |
+| 0.2000 | 3.70e-04 | 1.35e-06 | 8.71e-07 |
+| 0.1000 | 2.05e-05 | 6.93e-07 | 5.40e-08 |
+| 0.0500 | 1.26e-05 | 1.43e-07 | 3.36e-09 |
+| 0.0250 | 1.11e-05 | 4.80e-08 | 2.04e-10 |
+| 0.0125 | 5.89e-06 | 1.83e-08 | 1.36e-12 |
 
 RK4 is fourth order only for the smooth C_D; slope jumps in the interpolated table cap the observed order and set an error floor, far below the modelling uncertainty (metres).
 
@@ -98,29 +98,39 @@ Drag-free apogee: 4545 m. Mass if 3450 m were height gained instead of altitude:
 
 | configuration | time per apogee run (ms) |
 |---|---|
-| baseline RK4 (full C_D lookup each evaluation) | 43.7 |
-| optimised RK4 (flap slice precomputed) | 21.0 |
-| adaptive DOP853 (rtol 1e-8) | 9.1 |
+| baseline RK4 (full C_D lookup each evaluation) | 32.2 |
+| optimised RK4 (flap slice precomputed) | 29.8 |
+| adaptive DOP853 (rtol 1e-8) | 17.0 |
 
-Speed-up from optimisation: 2.1x. Right-hand-side evaluations per run: 2100.
+Speed-up from optimisation: 1.1x. Right-hand-side evaluations per run: 2100.
 
 Profile of the baseline run:
 
 ```
-         87157 function calls in 0.071 seconds
+         87157 function calls in 0.117 seconds
 
    Ordered by: cumulative time
    List reduced from 24 to 8 due to restriction <8>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000    0.071    0.071 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:80(simulate_apogee)
-        1    0.001    0.001    0.071    0.071 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:56(integrate_to_apogee)
-      525    0.009    0.000    0.071    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\integrators.py:34(rk4_step)
-     2100    0.006    0.000    0.060    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:69(rhs)
-     2100    0.002    0.000    0.049    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\coast.py:60(<lambda>)
-     2100    0.004    0.000    0.047    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:116(__call__)
-     2100    0.010    0.000    0.037    0.000 c:\MMA3001 Project\rocketApogeePrediction-MMA3001\src\drag.py:108(_cd_columns)
-     8400    0.009    0.000    0.031    0.000 C:\MMA3001 Project\rocketApogeePrediction-MMA3001\.venv\Lib\site-packages\numpy\lib\_function_base_impl.py:1550(interp)
+        1    0.000    0.000    0.117    0.117 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:80(simulate_apogee)
+        1    0.001    0.001    0.117    0.117 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:56(integrate_to_apogee)
+      525    0.015    0.000    0.116    0.000 /home/claude/rocketapogeeprediction-mma3001/src/integrators.py:34(rk4_step)
+     2100    0.011    0.000    0.100    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:69(rhs)
+     2100    0.003    0.000    0.079    0.000 /home/claude/rocketapogeeprediction-mma3001/src/coast.py:60(<lambda>)
+     2100    0.007    0.000    0.076    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:250(__call__)
+     2100    0.017    0.000    0.059    0.000 /home/claude/rocketapogeeprediction-mma3001/src/drag.py:242(_cd_columns)
+     8400    0.016    0.000    0.046    0.000 /usr/local/lib/python3.13/dist-packages/numpy/lib/_function_base_impl.py:1549(interp)
 
 
 ```
+
+## 8. Angle-of-attack sensitivity (constant pitch from burnout)
+
+| pitch (deg) | C_D at Mach 0.83, flap 0 | apogee at 0-deg mass (m) | change (m) | range over roll (m) | recalibrated mass (kg) | airbrake authority (m) | flap for 11000 ft (%) |
+|---|---|---|---|---|---|---|---|
+| 0 | 0.397 | 3450.2 | +0.0 | 3450 to 3450 | 35.98 | 249 | 41.0 |
+| 1 | 0.408 | 3434.6 | -15.6 | 3432 to 3437 | 36.74 | 245 | 43.3 |
+| 2 | 0.424 | 3407.6 | -42.7 | 3404 to 3412 | 38.08 | 244 | 46.8 |
+
+Only pitch angles 0, 1, 2 deg have a complete (Mach, flap) table. The file also contains 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 20 deg, but only at Mach 0.1-0.4 or lower, so they cannot be used for a coast that starts at Mach 0.83. Airbrake authority is the apogee with the flaps at 0 % minus at 100 %, using the mass recalibrated at that pitch. Drag is taken along the flight direction, C_axial cos(pitch) + C_normal sin(pitch); the csv column 'Total C_D' is the whole force magnitude and would overstate the drag at non-zero pitch. The 0-deg row uses the axial coefficient alone, which differs from 'Total C_D' by under 0.1 %, hence 3450.2 m and not 3450.0 m.

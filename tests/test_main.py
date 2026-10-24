@@ -13,3 +13,4 @@ def test_full_run_without_plots(csv_path, tmp_path):
     assert code == 0
     text = (tmp_path / 'results.md').read_text(encoding='utf-8')
     assert 'Mass calibration' in text and 'Airbrake validation' in text
+    assert 'Angle-of-attack sensitivity' in text

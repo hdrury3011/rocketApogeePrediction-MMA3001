@@ -1,15 +1,63 @@
 """Drag coefficient C_D(Mach, flap) built from the CFD data set.
 
-Only the zero-pitch rows are used, because the coast model is a vertical,
-zero-angle-of-attack flight.
+The coast model is a vertical, zero-angle-of-attack flight, so the zero-pitch
+rows are the default. Other pitch angles with a complete grid are available
+for the angle-of-attack sensitivity study.
 """
+import ast
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
 
 
-def load_cd_table(path):
-    """Read the zero-pitch drag-coefficient table from the CFD csv file.
+_NEEDED = ['Mach Number', 'Pitch (deg)', 'Roll (deg)',
+           'Flap (% extension)', 'Total C_D']
+
+
+def _read_cfd(path):
+    """Read the csv and check the columns every loader needs."""
+    df = pd.read_csv(path, index_col=0)
+    missing = [c for c in _NEEDED if c not in df.columns]
+    if missing:
+        raise ValueError(f"csv is missing columns: {missing}")
+    return df
+
+
+def _drag_column(df, component):
+    """Drag coefficient column to tabulate.
+
+    'total' is the csv column 'Total C_D'. In the CFD file this is the
+    magnitude of the whole aerodynamic force over q*S, which equals the drag
+    only at zero pitch; away from zero it also contains the normal force.
+
+    'wind' is the drag along the flight direction, built from the
+    force-coefficient vector: C_axial * cos(pitch) + C_normal * sin(pitch),
+    where C_axial = -C_x and C_normal = hypot(C_y, C_z). It equals C_axial at
+    zero pitch.
+    """
+    if component == 'total':
+        return df['Total C_D']
+    if component != 'wind':
+        raise ValueError("component must be 'total' or 'wind'")
+    if 'C_D vector' not in df.columns:
+        raise ValueError("csv is missing columns: ['C_D vector']")
+    vec = np.stack(df['C_D vector'].apply(ast.literal_eval))
+    alpha = np.radians(df['Pitch (deg)'].to_numpy(dtype=float))
+    c_normal = np.hypot(vec[:, 1], vec[:, 2])
+    return pd.Series(-vec[:, 0] * np.cos(alpha) + c_normal * np.sin(alpha),
+                     index=df.index)
+
+
+def load_cd_table(path, pitch=0, roll=None, component='total'):
+    """Read a drag-coefficient table C_D(Mach, flap) from the CFD csv file.
+
+    The coast model assumes zero angle of attack, so the default is the
+    zero-pitch slice. Other pitch angles are used only for the angle-of-attack
+    sensitivity study; they are accepted only if the (Mach, flap) grid at that
+    pitch is complete and spans the same Mach range as the zero-pitch table,
+    because the model clamps outside its table and would otherwise silently
+    reuse an end value.
 
     Parameters
     ----------
@@ -17,6 +65,16 @@ def load_cd_table(path):
         Location of the project csv file. Required columns are
         'Mach Number', 'Pitch (deg)', 'Roll (deg)', 'Flap (% extension)'
         and 'Total C_D'.
+    pitch : float
+        Pitch angle (deg), i.e. the angle of attack, to extract.
+    roll : float or None
+        Roll angle (deg) to extract. If None, zero pitch requires the roll
+        angles to agree (the table is otherwise ambiguous) and any other
+        pitch averages over the available roll angles.
+    component : {'total', 'wind'}
+        'total' uses the csv column 'Total C_D', which is the drag at zero
+        pitch. 'wind' uses the drag along the flight direction, which is the
+        right quantity at non-zero pitch (see `_drag_column`).
 
     Returns
     -------
@@ -32,31 +90,107 @@ def load_cd_table(path):
     FileNotFoundError
         If the file does not exist.
     ValueError
-        If required columns are missing, the (Mach, flap) grid is incomplete
-        or the two roll angles disagree by more than 1e-6 at zero pitch.
+        If required columns are missing, the requested pitch or roll is not
+        in the file, the (Mach, flap) grid is incomplete or shorter than the
+        full Mach range, or the roll angles disagree by more than 1e-6 at
+        zero pitch.
     """
-    df = pd.read_csv(path, index_col=0)
-    needed = ['Mach Number', 'Pitch (deg)', 'Roll (deg)',
-              'Flap (% extension)', 'Total C_D']
-    missing = [c for c in needed if c not in df.columns]
-    if missing:
-        raise ValueError(f"csv is missing columns: {missing}")
+    df = _read_cfd(path)
+    df = df.assign(cd=_drag_column(df, component))
 
     # Mach 0 rows are placeholders (all forces are zero) and are dropped.
-    d = df[(df['Pitch (deg)'] == 0) & (df['Mach Number'] > 0)]
-    spread = d.groupby(['Mach Number', 'Flap (% extension)'])['Total C_D'].agg(
-        lambda s: s.max() - s.min())
-    if spread.max() > 1e-6:
-        raise ValueError("C_D at zero pitch depends on roll angle; "
-                         "the vertical-flight table is ambiguous")
+    df = df[df['Mach Number'] > 0]
+    all_mach = np.sort(df['Mach Number'].unique())
+    d = df[df['Pitch (deg)'] == pitch]
+    if d.empty:
+        raise ValueError(f"no rows at pitch {pitch} deg")
+    if roll is not None:
+        d = d[d['Roll (deg)'] == roll]
+        if d.empty:
+            raise ValueError(f"no rows at pitch {pitch} deg, roll {roll} deg")
+    elif pitch == 0:
+        spread = d.groupby(['Mach Number', 'Flap (% extension)'])['cd'].agg(
+            lambda s: s.max() - s.min())
+        if spread.max() > 1e-6:
+            raise ValueError("C_D at zero pitch depends on roll angle; "
+                             "the vertical-flight table is ambiguous")
 
     table = d.pivot_table(index='Mach Number', columns='Flap (% extension)',
-                          values='Total C_D', aggfunc='first')
-    if table.isna().any().any():
-        raise ValueError("(Mach, flap) grid at zero pitch is incomplete")
+                          values='cd', aggfunc='mean')
+    if table.isna().any().any() or table.shape[0] != all_mach.size:
+        raise ValueError(f"(Mach, flap) grid at pitch {pitch} deg is "
+                         "incomplete or covers only part of the Mach range")
     return (table.index.to_numpy(dtype=float),
             table.columns.to_numpy(dtype=float),
             table.to_numpy(dtype=float))
+
+
+def complete_pitches(path):
+    """Pitch angles (deg) in the csv that have a complete C_D table.
+
+    Returns
+    -------
+    list of float
+        Ascending pitch angles for which `load_cd_table` succeeds.
+    """
+    df = _read_cfd(path)
+    out = []
+    for p in sorted(df['Pitch (deg)'].unique()):
+        try:
+            load_cd_table(path, pitch=p)
+        except ValueError:
+            continue
+        out.append(float(p))
+    return out
+
+
+def cd_roll_spread(path, pitch, component='total'):
+    """Largest difference in C_D between the two roll angles at one pitch.
+
+    Returns
+    -------
+    float
+        max |C_D(roll_a) - C_D(roll_b)| over the whole (Mach, flap) grid.
+
+    Raises
+    ------
+    ValueError
+        If the file does not have exactly two roll angles at that pitch,
+        or the grid is incomplete.
+    """
+    df = _read_cfd(path)
+    rolls = np.sort(df[df['Pitch (deg)'] == pitch]['Roll (deg)'].unique())
+    if rolls.size != 2:
+        raise ValueError(f"need exactly two roll angles at pitch {pitch} deg")
+    a = load_cd_table(path, pitch, roll=rolls[0], component=component)[2]
+    b = load_cd_table(path, pitch, roll=rolls[1], component=component)[2]
+    return float(np.max(np.abs(a - b)))
+
+
+def cd_vs_pitch(path, mach, flap, component='total'):
+    """C_D against pitch angle at one tabulated Mach number and flap setting.
+
+    Roll angles are averaged. Unlike `load_cd_table`, this also returns the
+    pitch angles that exist only at low Mach number.
+
+    Returns
+    -------
+    pitch, cd : numpy.ndarray
+        Pitch angles (deg, ascending) and the matching mean C_D.
+
+    Raises
+    ------
+    ValueError
+        If no rows match the Mach number and flap setting.
+    """
+    df = _read_cfd(path)
+    df = df.assign(cd=_drag_column(df, component))
+    sel = (np.isclose(df['Mach Number'], mach)
+           & np.isclose(df['Flap (% extension)'], flap))
+    if not sel.any():
+        raise ValueError(f"no rows at Mach {mach}, flap {flap} %")
+    s = df[sel].groupby('Pitch (deg)')['cd'].mean()
+    return s.index.to_numpy(dtype=float), s.to_numpy(dtype=float)
 
 
 class DragModel:
