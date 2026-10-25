@@ -153,19 +153,28 @@ def run_verification(plt, figdir):
 
     if plt is not None:
         fig, (ax1, ax2) = new_figure(plt, 2, 10.5, 4.4)
+        floor = 1e-10           # below this the error is floating-point round-off
         for name, color in (('Euler', ORANGE), ('RK4', BLUE)):
-            ax1.loglog(dts, out[name]['errs'], '-o', color=color, lw=2, ms=8, label=name)
-            ax2.loglog(out[name]['evals'], out[name]['errs'], '-o', color=color,
+            e = np.array(out[name]['errs'])
+            keep = e > floor    # drop round-off points (a log axis cannot show 0)
+            ax1.loglog(np.array(dts)[keep], e[keep], '-o', color=color, lw=2, ms=8,
+                       label=name)
+            ax2.loglog(np.array(out[name]['evals'])[keep], e[keep], '-o', color=color,
                        lw=2, ms=8, label=name)
         dref = np.array([dts[0], dts[-1]])
         ax1.loglog(dref, out['Euler']['errs'][0] * (dref / dts[0]), '--', color=INK2,
-                   lw=1, label='slope 1 and 4 (reference)')
-        ax1.loglog(dref, out['RK4']['errs'][2] * (dref / dts[2])**4, '--', color=INK2, lw=1)
+                   lw=1, label='reference slopes 1 and 4')
+        dref4 = np.array([dts[0], dts[4]])
+        ax1.loglog(dref4, 0.5 * out['RK4']['errs'][0] * (dref4 / dts[0])**4, '--',
+                   color=INK2, lw=1)
+        ax1.axhline(floor, ls=':', color=INK2, lw=1)
+        ax1.text(dts[0], floor * 1.8, 'round-off floor (about 1e-10 m)', fontsize=8,
+                 color=INK2, ha='right')
         style_axes(ax1, 'Apogee error vs step size (analytical benchmark)',
                    'step size dt (s)', 'absolute apogee error (m)')
         style_axes(ax2, 'Apogee error vs cost', 'right-hand-side evaluations', None)
-        for ax in (ax1, ax2):
-            ax.legend(frameon=False, fontsize=9, labelcolor=INK2)
+        ax1.legend(frameon=False, fontsize=9, labelcolor=INK2, loc='center left')
+        ax2.legend(frameon=False, fontsize=9, labelcolor=INK2, loc='upper right')
         fig.tight_layout()
         fig.savefig(figdir / 'fig1_verification.png', dpi=160, facecolor=SURFACE)
         plt.close(fig)
